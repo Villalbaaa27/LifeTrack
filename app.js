@@ -2,9 +2,8 @@
    MACROS APP — app.js
    ═══════════════════════════════════════════ */
 
-const API = 'https://script.google.com/macros/s/AKfycbweIfA3TC-dtBS2XO52wED8OY8ebabXkY6Nqly_ggnadu0LELQkMEoU5pMBIYgLa-pr/exec';
+const API = 'https://script.google.com/macros/s/AKfycbwTtTEyUB1Twxx4rC9WeCc9ytAzQ52yTIphdzfU7tYjgjcBR-V5oY7x_079x58zuwy3/exec';
 const CIRC = 2 * Math.PI * 32;
-const PIN = '1220';
 
 // ── STATE ─────────────────────────────────
 let allEntries = [];
@@ -18,6 +17,8 @@ let calYear, calMonth;
 let selectedCat = 'Desayuno';
 let pinEntry = '';
 let saveTimer;
+let currentUser = '';
+let pesoChartInstance = null;
 
 // ── DATE HELPERS ──────────────────────────
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -91,7 +92,7 @@ function init() {
 // ── FETCH ─────────────────────────────────
 async function fetchAll() {
   try {
-    const res = await fetch(API + '?action=get');
+    const res = await fetch(API + '?' + new URLSearchParams({ action: 'get', id_usuario: currentUser, t: Date.now() }));
     const data = await res.json();
     const raw = Array.isArray(data) ? data : [];
 
@@ -114,7 +115,7 @@ async function fetchAll() {
           syncSettingsUI();
           localStorage.setItem('macro_settings', JSON.stringify(settings));
         } catch (e) { }
-      } else {
+      } else if (row.tipo === 'comida' || row.tipo === 'peso') {
         allEntries.push({ ...row, fecha: normalizeFecha(row.fecha) });
       }
     });
@@ -129,6 +130,7 @@ async function fetchAll() {
     updateHistoryView();
     renderMiniCal();
     renderWorkoutCal();
+    renderPesoChart();
   } catch (e) {
     console.error(e);
     showToast('Error al cargar datos', 'err');
@@ -140,7 +142,7 @@ async function fetchAll() {
 // ── TODAY VIEW ────────────────────────────
 function updateTodayView() {
   const today = todayStr();
-  const entries = allEntries.filter(e => e.fecha === today);
+  const entries = allEntries.filter(e => e.fecha === today && e.tipo === 'comida');
   const totK = entries.reduce((s, e) => s + (parseFloat(e.kcal) || 0), 0);
   const totP = entries.reduce((s, e) => s + (parseFloat(e.proteina) || 0), 0);
   const gK = settings.goalKcal;
@@ -217,10 +219,12 @@ function renderMiniCal() {
     let cls = 'mc-day';
     if (trained.includes(d)) cls += ' trained';
     if (d === todayD) cls += ' today-m';
-    html += `<div class="${cls}">${d}</div>`;
+    const clickHandler = `onclick="toggleDay(${d}, true)"`;
+    html += `<div class="${cls}" style="cursor:pointer;" ${clickHandler}>${d}</div>`;
   }
   const currentTotal = firstDay + daysInMonth;
-  const remainingCells = 42 - currentTotal;
+  const totalCells = currentTotal > 35 ? 42 : 35;
+  const remainingCells = totalCells - currentTotal;
   for(let i = 1; i <= remainingCells; i++) {
      html += `<div class="mc-day other-m">${i}</div>`;
   }
@@ -230,12 +234,13 @@ function renderMiniCal() {
 // ── HISTORY VIEW ──────────────────────────
 function updateHistoryView() {
   const container = document.getElementById('history-container');
-  if (!allEntries.length) {
+  const foodEntries = allEntries.filter(e => e.tipo === 'comida');
+  if (!foodEntries.length) {
     container.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Sin datos aún</div>';
     return;
   }
   const groups = {};
-  allEntries.forEach(e => {
+  foodEntries.forEach(e => {
     if (!groups[e.fecha]) groups[e.fecha] = [];
     groups[e.fecha].push(e);
   });
@@ -252,6 +257,74 @@ function updateHistoryView() {
       <div class="log-list">${ents.slice().reverse().map(logHTML).join('')}</div>
     </div>`;
   }).join('');
+}
+
+// ── CHART (PESO) ──────────────────────────
+function renderPesoChart() {
+  const canvas = document.getElementById('pesoChart');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  
+  // Filtrar pesos y ordenar cronológicamente
+  const pesosList = allEntries.filter(e => e.tipo === 'peso')
+    .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+  const labels = pesosList.map(e => {
+    const d = new Date(e.fecha + 'T12:00:00');
+    return d.getDate() + '/' + (d.getMonth() + 1);
+  });
+  const dataMap = pesosList.map(e => e.peso);
+
+  if (pesoChartInstance) {
+    pesoChartInstance.destroy();
+  }
+
+  // Fallback al color accent
+  const rootStyle = getComputedStyle(document.documentElement);
+  let mainColor = rootStyle.getPropertyValue('--accent').trim();
+  if (!mainColor) mainColor = '#c8f557';
+
+  // Opacidad 20% para el fondo (hex to rgb + alpha hack via concat no es 100% ideal, mejor omitir fill bg)
+  
+  pesoChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Peso (kg)',
+        data: dataMap,
+        borderColor: mainColor,
+        borderWidth: 3,
+        pointBackgroundColor: '#0a0a0a',
+        pointBorderColor: mainColor,
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        tension: 0.35, 
+        fill: false, 
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { backgroundColor: '#141414', titleColor: '#888', bodyColor: '#fff', bodyFont: { weight: 'bold' } }
+      },
+      scales: {
+        x: {
+          display: true,
+          grid: { display: false },
+          ticks: { color: '#888', maxTicksLimit: 7 }
+        },
+        y: {
+          display: true,
+          grid: { color: 'rgba(255, 255, 255, 0.06)' }, 
+          ticks: { color: '#888', maxTicksLimit: 5 }
+        }
+      }
+    }
+  });
 }
 
 function fmtDate(str) {
@@ -281,10 +354,10 @@ async function addEntry() {
   const btn = document.getElementById('btn-add');
   btn.disabled = true; btn.textContent = 'Guardando...';
 
-  const p = new URLSearchParams({ action: 'add', tipo: 'comida', fecha, categoria: selectedCat, alimento, kcal, proteina });
+  const p = new URLSearchParams({ action: 'add', id_usuario: currentUser, tipo: 'comida', fecha, categoria: selectedCat, alimento, kcal, proteina });
   try {
     await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
-    allEntries.push({ fecha, categoria: selectedCat, alimento, kcal, proteina });
+    allEntries.push({ tipo: 'comida', fecha, categoria: selectedCat, alimento, kcal, proteina });
     updateTodayView(); updateHistoryView();
     showToast('✓ Guardado', 'ok');
     document.getElementById('form-food').value = '';
@@ -337,7 +410,8 @@ function renderWorkoutCal() {
     html += `<div class="${cls}" onclick="toggleDay(${d})">${d}</div>`;
   }
   const currentTotal = firstDay + daysInMonth;
-  const remainingCells = 42 - currentTotal;
+  const totalCells = currentTotal > 35 ? 42 : 35;
+  const remainingCells = totalCells - currentTotal;
   for(let i = 1; i <= remainingCells; i++) {
      html += `<div class="wk-day other-m">${i}</div>`;
   }
@@ -351,8 +425,39 @@ function changeMonth(delta) {
   renderWorkoutCal();
 }
 
-async function toggleDay(day) {
-  const mk = monthKey(calYear, calMonth);
+async function addPeso() {
+  const pInput = document.getElementById('form-peso');
+  const peso = parseFloat(pInput.value);
+  if (!peso) { showToast('Introduce un peso', 'err'); return; }
+  
+  const btn = document.getElementById('btn-peso');
+  btn.disabled = true; btn.textContent = '...';
+  
+  const p = new URLSearchParams({ action: 'add_peso', id_usuario: currentUser, tipo: 'peso', fecha: todayStr(), peso });
+  try {
+    await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
+    showToast('✓ Peso guardado', 'ok');
+    pInput.value = '';
+    
+    // Check if there is already a weight for today locally, replace it or push
+    const today = todayStr();
+    const existingIdx = allEntries.findIndex(e => e.tipo === 'peso' && e.fecha === today);
+    if(existingIdx !== -1) {
+       allEntries[existingIdx].peso = peso;
+    } else {
+       allEntries.push({ tipo: 'peso', fecha: today, peso });
+    }
+    renderPesoChart();
+  } catch (e) { showToast('Error', 'err'); }
+  finally { btn.disabled = false; btn.textContent = '+'; }
+}
+
+async function toggleDay(day, isMini = false) {
+  // Si venimos del mini-cal, forzamos mes actual, si no usamos el que estemos viendo
+  const y = isMini ? new Date().getFullYear() : calYear;
+  const m = isMini ? new Date().getMonth() : calMonth;
+  const mk = monthKey(y, m);
+  
   if (!trainedDays[mk]) trainedDays[mk] = [];
   const idx = trainedDays[mk].indexOf(day);
   const adding = idx === -1;
@@ -364,13 +469,15 @@ async function toggleDay(day) {
   renderMiniCal();
 
   clearTimeout(saveTimer);
-  const ind = document.getElementById('save-ind');
+  const ind_id = isMini ? 'mini-save-ind' : 'save-ind';
+  const ind = document.getElementById(ind_id) || document.getElementById('save-ind');
   ind.textContent = 'Guardando...';
+  
   saveTimer = setTimeout(async () => {
-    const fecha = `${calYear}-${pad(calMonth + 1)}-${pad(day)}`;
+    const fecha = `${y}-${pad(m + 1)}-${pad(day)}`;
     const action = adding ? 'add_entreno' : 'remove_entreno';
     try {
-      await fetch(API + '?' + new URLSearchParams({ action, fecha, tipo: 'entreno' }), { method: 'GET', mode: 'no-cors' });
+      await fetch(API + '?' + new URLSearchParams({ action, id_usuario: currentUser, fecha, tipo: 'entreno' }), { method: 'GET', mode: 'no-cors' });
       ind.textContent = '✓ Guardado';
       setTimeout(() => ind.textContent = '', 2000);
     } catch (e) { ind.textContent = 'Error al guardar'; }
@@ -426,7 +533,7 @@ async function saveSettings() {
   updateTodayView();
 
   // Save to Sheets
-  const p = new URLSearchParams({ action: 'save_settings', tipo: 'ajuste', valor: JSON.stringify(settings) });
+  const p = new URLSearchParams({ action: 'save_settings', id_usuario: currentUser, tipo: 'ajuste', valor: JSON.stringify(settings) });
   try {
     await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
     showToast('✓ Ajustes guardados', 'ok');
@@ -439,10 +546,11 @@ function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
-  const idx = ['today', 'add', 'workout', 'history'].indexOf(name);
-  document.querySelectorAll('nav button')[idx].classList.add('active');
-  if (name === 'workout') renderWorkoutCal();
-  if (name === 'history') updateHistoryView();
+  const idx = ['today', 'add', 'tracking', 'more'].indexOf(name);
+  const navBtns = document.querySelectorAll('nav button');
+  if (navBtns[idx]) navBtns[idx].classList.add('active');
+  if (name === 'tracking') renderWorkoutCal();
+  if (name === 'more') updateHistoryView();
 }
 
 // ── TOAST ─────────────────────────────────
@@ -468,23 +576,50 @@ function updateDots() {
     dot.classList.remove('error');
   }
 }
-function checkPin() {
-  if (pinEntry === PIN) {
-    sessionStorage.setItem('macro_auth', '1');
-    document.getElementById('login-screen').style.display = 'none';
-    init();
-  } else {
+async function checkPin() {
+  const userInp = document.getElementById('login-user').value.trim();
+  if (!userInp) { showToast('Escribe tu usuario primero', 'err'); pinEntry = ''; updateDots(); return; }
+
+  const errEl = document.getElementById('login-err');
+  errEl.textContent = 'Verificando...';
+  errEl.classList.add('show');
+
+  try {
+    const res = await fetch(API + '?' + new URLSearchParams({ action: 'login', user: userInp, pin: pinEntry, t: Date.now() }));
+    const data = await res.json();
+
+    if (data.ok) {
+      currentUser = data.id_usuario;
+      localStorage.setItem('macro_user', currentUser);
+      localStorage.setItem('macro_auth', '1');
+      errEl.classList.remove('show');
+      document.getElementById('login-screen').style.display = 'none';
+      init();
+    } else {
+      throw new Error(data.error || 'PIN incorrecto');
+    }
+  } catch (e) {
     for (let i = 0; i < 4; i++) document.getElementById('dot-' + i).classList.add('error');
-    document.getElementById('login-err').classList.add('show');
+    errEl.textContent = e.message || 'Error de conexión';
+    errEl.classList.add('show');
     setTimeout(() => {
       pinEntry = ''; updateDots();
-      document.getElementById('login-err').classList.remove('show');
-    }, 900);
+      errEl.classList.remove('show');
+      setTimeout(() => { errEl.textContent = 'PIN incorrecto'; }, 300);
+    }, 1500);
   }
 }
 
+function logout() {
+  localStorage.removeItem('macro_auth');
+  localStorage.removeItem('macro_user');
+  window.location.reload();
+}
+
 // ── BOOT ──────────────────────────────────
-if (sessionStorage.getItem('macro_auth') === '1') {
+const savedUser = localStorage.getItem('macro_user');
+if (localStorage.getItem('macro_auth') === '1' && savedUser) {
+  currentUser = savedUser;
   document.getElementById('login-screen').style.display = 'none';
   init();
 }
