@@ -139,11 +139,13 @@ nav button.active { color: var(--accent); font-weight: 500; }
 .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
 .fg { margin-bottom: 13px; }
 .fg label { display: block; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
-.fg input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: var(--font-m); font-size: 14px; padding: 9px 11px; border-radius: 8px; outline: none; transition: border-color 0.15s; }
-.fg input[type="date"] { display: block; width: 100%; box-sizing: border-box; text-align: center; -webkit-appearance: none; }
-.fg input[type="date"]::-webkit-datetime-edit { display: block; text-align: center; padding: 0; }
-.fg input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: inline-block; }
+.fg input { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: var(--font-m); font-size: 14px; padding: 9px 11px; border-radius: 8px; outline: none; transition: border-color 0.15s; }
 .fg input:focus { border-color: var(--accent); }
+.date-input-wrap { display: flex; width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; transition: border-color 0.15s; box-sizing: border-box; }
+.date-input-wrap:focus-within { border-color: var(--accent); }
+.date-input-wrap input[type="date"] { background: transparent; border: none; width: 100%; color: var(--text); font-family: var(--font-m); font-size: 14px; padding: 0; outline: none; text-align: center; -webkit-appearance: none; box-sizing: border-box; }
+.date-input-wrap input[type="date"]::-webkit-datetime-edit { display: block; text-align: center; }
+.date-input-wrap input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: inline-block; }
 .form-row { display: flex; gap: 9px; }
 .form-row .fg { flex: 1; }
 .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
