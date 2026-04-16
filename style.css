@@ -283,3 +283,13 @@ nav button.active { color: var(--accent); font-weight: 500; }
 .rank-name { font-size: 15px; font-weight: 700; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-family: var(--font-d); }
 .rank-stats { display: flex; gap: 14px; font-size: 11px; color: var(--muted); }
 .rank-stat span { color: var(--text); font-weight: 600; font-family: var(--font-m); font-size: 12px; }
+
+/* ── SUB MENUS (Más) ── */
+.list-menu { background: var(--surface); border-radius: 12px; margin-bottom: 24px; overflow: hidden; border: 1px solid var(--border); display: flex; flex-direction: column; }
+.list-item { padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; color: var(--text); background: transparent; border-top: none; border-left: none; border-right: none; width: 100%; text-align: left; font-family: var(--font-m); font-size: 15px; cursor: pointer; transition: background 0.2s; outline: none; }
+.list-item:active { background: rgba(255,255,255,0.05); }
+.list-item:last-child { border-bottom: none; }
+.list-item .li-icon { font-size: 18px; margin-right: 12px; opacity: 0.8; }
+.list-item .li-text { flex: 1; font-weight: 500; }
+.list-item .li-arrow { color: var(--muted); opacity: 0.5; font-size:20px; }
+.back-btn { background: none; border: none; color: var(--accent); padding: 10px 0; font-family: var(--font-m); cursor: pointer; font-size: 14px; display: inline-block; font-weight: bold; margin-bottom: 10px; }

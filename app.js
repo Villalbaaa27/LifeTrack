@@ -173,6 +173,42 @@ function updateTodayView() {
   }
 
   renderMiniCal();
+  updateStreak();
+}
+
+function updateStreak() {
+  const dates = [];
+  Object.keys(trainedDays).forEach(mk => {
+     trainedDays[mk].forEach(d => {
+        dates.push(new Date(mk + '-' + String(d).padStart(2,'0') + 'T12:00:00'));
+     });
+  });
+  dates.sort((a,b) => b - a); // descending -> newest first
+  
+  let streak = 0;
+  if (dates.length > 0) {
+    let curr = new Date();
+    curr.setHours(12,0,0,0);
+    let diffDaysFirst = Math.floor((curr - dates[0]) / 86400000);
+    
+    if (diffDaysFirst <= 1) {
+       let expect = new Date(dates[0]);
+       for (let d of dates) {
+          let diff = Math.floor((expect - d) / 86400000);
+          if (diff === 0) { 
+             streak++; 
+             expect.setDate(expect.getDate() - 1); 
+          } else if (diff > 0) {
+             break;
+          }
+       }
+    }
+  }
+  const badge = document.getElementById('streak-badge');
+  if (badge) {
+    badge.innerHTML = `🔥 ${streak}`;
+    badge.style.opacity = streak > 0 ? '1' : '0.5';
+  }
 }
 
 function logHTML(e) {
@@ -355,6 +391,44 @@ function fmtDate(str) {
 }
 
 // ── ADD ENTRY ─────────────────────────────
+let scanner = null;
+function startScanner() {
+  document.getElementById('scanner-container').style.display = 'block';
+  scanner = new Html5Qrcode("scanner-view");
+  scanner.start({ facingMode: "environment" }, { fps: 6, qrbox: { width: 250, height: 150 } }, 
+    decodedText => {
+      stopScanner();
+      fetchOpenFoodFacts(decodedText);
+    },
+    err => { /* ignore */ }
+  ).catch(err => {
+    showToast('Aviso: Permisos de cámara requeridos', 'err');
+    stopScanner();
+  });
+}
+
+function stopScanner() {
+  if (scanner) { scanner.stop().catch(()=>{}); scanner = null; }
+  document.getElementById('scanner-container').style.display = 'none';
+}
+
+function fetchOpenFoodFacts(barcode) {
+  showToast('Buscando alimento...', 'ok');
+  fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`)
+    .then(r => r.json())
+    .then(data => {
+       if (data.status === 1) {
+          const p = data.product;
+          document.getElementById('form-food').value = p.product_name || 'Desconocido';
+          document.getElementById('form-kcal').value = Math.round(p.nutriments?.['energy-kcal_100g'] || 0);
+          document.getElementById('form-prot').value = parseFloat(p.nutriments?.proteins_100g || 0).toFixed(1);
+          showToast('¡Alimento escaneado! (valores /100g)', 'ok');
+       } else {
+          showToast('Este producto no existe en la base', 'err');
+       }
+    }).catch(e => showToast('Error red al escanear', 'err'));
+}
+
 function selectCat(btn) {
   document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('sel'));
   btn.classList.add('sel');
@@ -557,11 +631,34 @@ async function toggleDay(day, isMini = false) {
 }
 
 // ── CONFIG PANEL ──────────────────────────
-function openConfig() {
-  document.getElementById('cfg-panel').classList.add('open');
+function calcTDEE() {
+   const w = parseFloat(document.getElementById('tdee-w').value) || 0;
+   const h = parseFloat(document.getElementById('tdee-h').value) || 0;
+   const a = parseFloat(document.getElementById('tdee-a').value) || 0;
+   const s = document.getElementById('tdee-s').value;
+   const objOffset = parseFloat(document.getElementById('tdee-obj').value) || 0;
+   
+   if (!w || !h || !a) return showToast('Completa todo para calcular', 'err');
+   
+   let bmr = s === 'm' ? (10 * w + 6.25 * h - 5 * a + 5) : (10 * w + 6.25 * h - 5 * a - 161);
+   let tdee = Math.round(bmr * 1.55); // Asumiendo ejercicio moderado
+   
+   let finalKcal = tdee + objOffset;
+   finalKcal = Math.round(finalKcal / 50) * 50; // Redondear a 50
+   let finalProt = Math.round((w * 2) / 5) * 5; // Redondear a 5
+   
+   document.getElementById('cfg-kcal').value = finalKcal;
+   document.getElementById('cfg-prot').value = finalProt;
+   showToast('¡Objetivos auto-ajustados!', 'ok');
 }
-function closeConfig() {
-  document.getElementById('cfg-panel').classList.remove('open');
+
+function openSubMenu(id) {
+  document.getElementById('more-main').style.display = 'none';
+  document.getElementById(id).style.display = 'block';
+}
+function closeSubMenu() {
+  document.querySelectorAll('.sub-menu').forEach(el => el.style.display = 'none');
+  document.getElementById('more-main').style.display = 'block';
 }
 
 function syncSettingsUI() {

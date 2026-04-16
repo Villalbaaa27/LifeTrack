@@ -14,11 +14,17 @@
   <!-- Iconos para PWA en iOS y Android -->
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="icon" type="image/png" href="icon.png">
+  <link rel="manifest" href="manifest.json">
   
   <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
-
 <body>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js');
+    }
+  </script>
 
   <div id="login-screen">
     <div class="login-logo">Life<span>Track</span></div>
@@ -55,7 +61,7 @@
   <header id="app-header">
     <div class="logo">Life<span>Track</span></div>
     <div class="date-badge" id="header-date"></div>
-    <button class="cfg-btn" onclick="openConfig()" title="Configuración">⚙</button>
+    <div class="streak-badge" id="streak-badge" style="font-size:12px; font-weight:700; color:var(--kcal);">🔥 0</div>
   </header>
 
 
@@ -144,7 +150,14 @@
       </div>
       <div class="fg">
         <label>Alimento</label>
-        <input type="text" id="form-food" placeholder="" autocomplete="off">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="form-food" placeholder="" autocomplete="off" style="flex:1;">
+          <button onclick="startScanner()" style="background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; justify-content:center; width:44px; height:44px; font-size:20px; cursor:pointer;" title="Escanear Código de Barras">📷</button>
+        </div>
+        <div id="scanner-container" style="display:none; margin-top:10px; width:100%; border-radius:10px; overflow:hidden; border:1px solid var(--border);">
+           <div id="scanner-view" style="width:100%;"></div>
+           <button class="btn-main" onclick="stopScanner()" style="margin-top:0; border-radius:0; background:#f55;">Cancelar Escáner</button>
+        </div>
       </div>
       <div class="form-row">
         <div class="fg">
@@ -258,45 +271,86 @@
   </div>
 
   <!-- ══ MAS ════════════════════════════ -->
-  <div class="view" id="view-more">
+  <div class="view" id="view-more" style="padding: 20px;">
     
-    <div class="sec-title" style="margin-top: 10px;">Opciones</div>
-    <div class="form-card" style="padding: 10px;">
-       <button style="width:100%; background:none; border:none; color:var(--text); text-align:left; padding:10px; font-family:var(--font-m); font-size:14px; cursor:pointer;" onclick="openConfig()">⚙ Configuración de la App</button>
-       <div style="height:1px; background:var(--border); margin:5px 0;"></div>
-       <button style="width:100%; background:none; border:none; color:#f55; text-align:left; padding:10px; font-family:var(--font-m); font-size:14px; cursor:pointer;" onclick="logout()">Cerrar sesión</button>
+    <!-- Main Menu List -->
+    <div id="more-main">
+       <div class="sec-title" style="margin-top:0;">Mi Perfil & Ajustes</div>
+       <div class="list-menu">
+          <button class="list-item" onclick="openSubMenu('sub-tdee')">
+             <span class="li-icon">⚖️</span><span class="li-text">Calculadora TDEE</span><span class="li-arrow">›</span>
+          </button>
+          <button class="list-item" onclick="openSubMenu('sub-goals')">
+             <span class="li-icon">🎯</span><span class="li-text">Objetivos y Macros</span><span class="li-arrow">›</span>
+          </button>
+          <button class="list-item" onclick="openSubMenu('sub-theme')">
+             <span class="li-icon">🎨</span><span class="li-text">Apariencia y Tema</span><span class="li-arrow">›</span>
+          </button>
+       </div>
+
+       <div class="sec-title">Datos Guardados</div>
+       <div class="list-menu">
+          <button class="list-item" onclick="openSubMenu('sub-history')">
+             <span class="li-icon">📋</span><span class="li-text">Historial de Registros</span><span class="li-arrow">›</span>
+          </button>
+       </div>
+
+       <div class="list-menu" style="margin-top:30px;">
+          <button class="list-item" onclick="logout()" style="justify-content:center; color:#f55;">
+             <span class="li-text" style="flex:unset;">Cerrar Sesión</span>
+          </button>
+       </div>
     </div>
 
-    <div class="sec-title" style="margin-top: 30px;">Historial de registros</div>
-    <div id="history-container">
-      <div class="loading"><span class="spinner"></span>Cargando...</div>
+    <!-- ── SUB VISTAS ── -->
+    <div id="sub-tdee" class="sub-menu" style="display:none;">
+       <button class="back-btn" onclick="closeSubMenu()">← Atrás</button>
+       <div class="sec-title" style="margin-top:20px;">Auto-Calcular TDEE</div>
+       <div class="form-card" style="padding:16px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;">
+           <div class="cfg-row" style="margin:0;"><label>Peso (kg)</label><input type="number" id="tdee-w" value="70"></div>
+           <div class="cfg-row" style="margin:0;"><label>Alt. (cm)</label><input type="number" id="tdee-h" value="175"></div>
+           <div class="cfg-row" style="margin:0;"><label>Edad</label><input type="number" id="tdee-a" value="25"></div>
+           <div class="cfg-row" style="margin:0;"><label>Sexo</label>
+              <select id="tdee-s" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:4px; font-family:var(--font-m); outline:none;">
+                 <option value="m">Hombre</option>
+                 <option value="f">Mujer</option>
+              </select>
+           </div>
+        </div>
+        <div class="cfg-row" style="margin:0 0 16px 0;">
+           <label style="margin-bottom:4px; display:block;">Objetivo Nutricional</label>
+           <select id="tdee-obj" style="background:var(--bg); border:1px solid var(--border); color:var(--text); padding:8px; width:100%; font-family:var(--font-m); outline:none; border-radius:6px;">
+              <option value="-500">Déficit (Perder Grasa / Definir)</option>
+              <option value="0" selected>Mantenimiento</option>
+              <option value="300">Volumen (Ganar Masa Muscular)</option>
+           </select>
+        </div>
+        <button class="btn-main" onclick="calcTDEE()" style="padding:12px; font-size:14px;">Calcular Recomendado</button>
+       </div>
     </div>
-  </div>
 
-  <!-- ══ CONFIG PANEL ═══════════════════════ -->
-  <div id="cfg-panel">
-    <div class="cfg-backdrop" onclick="closeConfig()"></div>
-    <div class="cfg-sheet">
-      <div class="cfg-handle"></div>
-      <div class="cfg-title">Configuración</div>
-
-      <!-- Objetivos -->
-      <div class="cfg-section">
-        <div class="cfg-section-title">Objetivos diarios</div>
+    <div id="sub-goals" class="sub-menu" style="display:none;">
+       <button class="back-btn" onclick="closeSubMenu()">← Atrás</button>
+       <div class="sec-title" style="margin-top:20px;">Tus Objetivos</div>
+       <div class="form-card" style="padding:16px;">
         <div class="cfg-row">
           <label>Calorías objetivo</label>
           <input type="number" id="cfg-kcal" value="2000" min="0">
         </div>
-        <div class="cfg-row">
+        <div class="cfg-row" style="margin-bottom:20px;">
           <label>Proteína objetivo (g)</label>
           <input type="number" id="cfg-prot" value="150" min="0">
         </div>
-      </div>
+        <button class="btn-main" onclick="saveSettings()">Guardar Objetivos</button>
+       </div>
+    </div>
 
-      <!-- Temas predefinidos -->
-      <div class="cfg-section">
-        <div class="cfg-section-title">Tema</div>
-        <div class="theme-grid" id="theme-grid">
+    <div id="sub-theme" class="sub-menu" style="display:none;">
+       <button class="back-btn" onclick="closeSubMenu()">← Atrás</button>
+       
+       <div class="sec-title" style="margin-top:20px;">Tema Base</div>
+       <div class="theme-grid" id="theme-grid" style="margin-bottom:20px;">
           <button class="theme-btn active-theme" onclick="applyThemePreset(0)">
             <div class="theme-preview">
               <div class="tp" style="background:#0a0a0a;border:1px solid #444"></div>
@@ -329,32 +383,26 @@
             </div>
             <div class="theme-name">Forest</div>
           </button>
-        </div>
-      </div>
+       </div>
 
-      <!-- Colores custom -->
-      <div class="cfg-section">
-        <div class="cfg-section-title">Colores personalizados</div>
-        <div class="cfg-row">
-          <label>Fondo</label>
-          <input type="color" id="cfg-bg" value="#0a0a0a" oninput="onColorChange()">
-        </div>
-        <div class="cfg-row">
-          <label>Superficie (tarjetas)</label>
-          <input type="color" id="cfg-surface" value="#141414" oninput="onColorChange()">
-        </div>
-        <div class="cfg-row">
-          <label>Color acento (proteína)</label>
-          <input type="color" id="cfg-accent" value="#c8f557" oninput="onColorChange()">
-        </div>
-        <div class="cfg-row">
-          <label>Color calorías</label>
-          <input type="color" id="cfg-kcalc" value="#f5a623" oninput="onColorChange()">
-        </div>
-      </div>
-
-      <button class="cfg-save-btn" onclick="saveSettings()">Guardar ajustes</button>
+       <div class="sec-title">Colores Libres</div>
+       <div class="form-card" style="padding:16px;">
+        <div class="cfg-row"><label>Fondo</label><input type="color" id="cfg-bg" value="#0a0a0a" oninput="onColorChange()"></div>
+        <div class="cfg-row"><label>Targetas</label><input type="color" id="cfg-surface" value="#141414" oninput="onColorChange()"></div>
+        <div class="cfg-row"><label>Proteína color</label><input type="color" id="cfg-accent" value="#c8f557" oninput="onColorChange()"></div>
+        <div class="cfg-row" style="margin-bottom:20px;"><label>Caloría color</label><input type="color" id="cfg-kcalc" value="#f5a623" oninput="onColorChange()"></div>
+        <button class="btn-main" onclick="saveSettings()">Guardar Tema</button>
+       </div>
     </div>
+
+    <div id="sub-history" class="sub-menu" style="display:none;">
+       <button class="back-btn" onclick="closeSubMenu()">← Atrás</button>
+       <div class="sec-title" style="margin-top:20px;">Historial de registros</div>
+       <div id="history-container">
+          <div class="loading"><span class="spinner"></span>Cargando...</div>
+       </div>
+    </div>
+
   </div>
 
   <!-- ══ NAV (fixed bottom) ═══════════════════════ -->
