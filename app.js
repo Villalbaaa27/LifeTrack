@@ -120,10 +120,8 @@ async function fetchAll() {
       }
     });
 
-    // merge trained
-    Object.entries(newTrained).forEach(([mk, days]) => {
-      trainedDays[mk] = days;
-    });
+    // Reemplazar estado local con los datos reales del servidor
+    trainedDays = newTrained;
     localStorage.setItem('macro_training', JSON.stringify(trainedDays));
 
     updateTodayView();
@@ -160,12 +158,6 @@ function updateTodayView() {
   document.getElementById('st-count').textContent = entries.length;
   document.getElementById('st-kcal-l').innerHTML = `${Math.round(gK - totK)} <span class="u">kcal</span>`;
   document.getElementById('st-prot-l').innerHTML = `${(gP - totP).toFixed(1)} <span class="u">g</span>`;
-
-  // bars
-  document.getElementById('bar-kcal-fill').style.width = (pK * 100) + '%';
-  document.getElementById('bar-prot-fill').style.width = (pP * 100) + '%';
-  document.getElementById('bar-kcal-lbl').textContent = `${Math.round(totK)} / ${gK} kcal`;
-  document.getElementById('bar-prot-lbl').textContent = `${totP.toFixed(1)} / ${gP} g`;
 
   // list
   const list = document.getElementById('today-log-list');
@@ -234,27 +226,49 @@ function renderMiniCal() {
 // ── HISTORY VIEW ──────────────────────────
 function updateHistoryView() {
   const container = document.getElementById('history-container');
+  // Obtenemos fechas con comida, o también extraídas de los entrenos locales
   const foodEntries = allEntries.filter(e => e.tipo === 'comida');
-  if (!foodEntries.length) {
+  const validDates = new Set();
+  
+  foodEntries.forEach(e => validDates.add(e.fecha));
+  
+  // Agregar también fechas de entrenamientos
+  Object.keys(trainedDays).forEach(mk => {
+    const [y, m] = mk.split('-');
+    trainedDays[mk].forEach(d => {
+      validDates.add(`${y}-${m}-${pad(d)}`);
+    });
+  });
+
+  const datesList = Array.from(validDates).sort().reverse();
+  if (!datesList.length) {
     container.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>Sin datos aún</div>';
     return;
   }
+  
   const groups = {};
   foodEntries.forEach(e => {
     if (!groups[e.fecha]) groups[e.fecha] = [];
     groups[e.fecha].push(e);
   });
-  const dates = Object.keys(groups).sort().reverse();
-  container.innerHTML = dates.map(date => {
-    const ents = groups[date];
+
+  container.innerHTML = datesList.map(date => {
+    const ents = groups[date] || [];
     const totK = ents.reduce((s, e) => s + (parseFloat(e.kcal) || 0), 0);
     const totP = ents.reduce((s, e) => s + (parseFloat(e.proteina) || 0), 0);
+    
+    const dObj = new Date(date + 'T12:00:00');
+    const mk = monthKey(dObj.getFullYear(), dObj.getMonth());
+    const trained = trainedDays[mk] && trainedDays[mk].includes(dObj.getDate());
+    const badge = trained ? '<span style="color:var(--accent);font-size:9px;border:1px solid var(--accent);border-radius:4px;padding:2px 4px;margin-left:6px;">💪 Entrenado</span>' : '';
+
     return `<div class="hist-group">
       <div class="hist-date-row">
-        <span>${fmtDate(date)}</span>
+        <span>${fmtDate(date)}${badge}</span>
         <span><span class="ht-k">${Math.round(totK)} kcal</span><span class="ht-p">${totP.toFixed(1)}g prot</span></span>
       </div>
-      <div class="log-list">${ents.slice().reverse().map(logHTML).join('')}</div>
+      ` + (ents.length ? `<div class="log-list">${ents.slice().reverse().map(logHTML).join('')}</div>` : 
+      `<div style="font-size:10px; color:var(--muted); margin-top:4px;">No hay comidas registradas</div>`) + `
     </div>`;
   }).join('');
 }
@@ -531,6 +545,7 @@ async function saveSettings() {
   applyTheme(settings);
   localStorage.setItem('macro_settings', JSON.stringify(settings));
   updateTodayView();
+  closeConfig(); // Minimizar inmediatamente
 
   // Save to Sheets
   const p = new URLSearchParams({ action: 'save_settings', id_usuario: currentUser, tipo: 'ajuste', valor: JSON.stringify(settings) });
@@ -538,7 +553,6 @@ async function saveSettings() {
     await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
     showToast('✓ Ajustes guardados', 'ok');
   } catch (e) { showToast('Guardado solo local', 'ok'); }
-  closeConfig();
 }
 
 // ── NAV ───────────────────────────────────

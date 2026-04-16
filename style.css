@@ -31,7 +31,8 @@ body {
   overscroll-behavior: none;
   scrollbar-width: none;
 }
-::-webkit-scrollbar { display: none; }
+* { scrollbar-width: none !important; }
+*::-webkit-scrollbar { display: none !important; }
 
 /* ── HEADER (fixed) ── */
 #app-header {
@@ -139,9 +140,9 @@ nav button.active { color: var(--accent); font-weight: 500; }
 .fg { margin-bottom: 13px; }
 .fg label { display: block; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 5px; }
 .fg input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: var(--font-m); font-size: 14px; padding: 9px 11px; border-radius: 8px; outline: none; transition: border-color 0.15s; }
-.fg input[type="date"] { text-align: center; }
-.fg input[type="date"]::-webkit-datetime-edit { display: flex; justify-content: center; }
-.fg input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; justify-content: center; }
+.fg input[type="date"] { display: block; width: 100%; text-align: center; }
+.fg input[type="date"]::-webkit-datetime-edit { display: flex; justify-content: center; width: 100%; }
+.fg input[type="date"]::-webkit-datetime-edit-fields-wrapper { display: flex; justify-content: center; width: 100%; }
 .fg input:focus { border-color: var(--accent); }
 .form-row { display: flex; gap: 9px; }
 .form-row .fg { flex: 1; }
