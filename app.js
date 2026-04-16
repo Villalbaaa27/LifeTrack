@@ -1,9 +1,9 @@
 /* ═══════════════════════════════════════════
-   MACROS APP — app.js
+   LifeTrack — app.js
    ═══════════════════════════════════════════ */
 
-const API = 'https://script.google.com/macros/s/AKfycbwTtTEyUB1Twxx4rC9WeCc9ytAzQ52yTIphdzfU7tYjgjcBR-V5oY7x_079x58zuwy3/exec';
-const CIRC = 2 * Math.PI * 32;
+const API = 'https://script.google.com/macros/s/AKfycbzcSpqchLizSP0Heeo5nJ_L1XfunYxP5_P8ogCl6oyrAZpD1faZGV5HGJIGtcDHoNb9/exec';
+const CIRC = 2 * Math.PI * 39;
 
 // ── STATE ─────────────────────────────────
 let allEntries = [];
@@ -114,7 +114,12 @@ async function fetchAll() {
           applyTheme(settings);
           syncSettingsUI();
           localStorage.setItem('macro_settings', JSON.stringify(settings));
+          renderPresets();
         } catch (e) { }
+      } else if (row.tipo === 'marca') {
+        document.getElementById('form-pb').value = row.pb || '';
+        document.getElementById('form-s').value = row.s || '';
+        document.getElementById('form-cb').value = row.cb || '';
       } else if (row.tipo === 'comida' || row.tipo === 'peso') {
         allEntries.push({ ...row, fecha: normalizeFecha(row.fecha) });
       }
@@ -356,7 +361,7 @@ function selectCat(btn) {
   selectedCat = btn.dataset.cat;
 }
 
-async function addEntry() {
+function addEntry() {
   const fecha = document.getElementById('form-date').value;
   const alimento = document.getElementById('form-food').value.trim();
   const kcal = parseFloat(document.getElementById('form-kcal').value) || 0;
@@ -365,21 +370,79 @@ async function addEntry() {
   if (!alimento) { showToast('Escribe el alimento', 'err'); return; }
   if (!fecha) { showToast('Selecciona una fecha', 'err'); return; }
 
-  const btn = document.getElementById('btn-add');
-  btn.disabled = true; btn.textContent = 'Guardando...';
-
   const p = new URLSearchParams({ action: 'add', id_usuario: currentUser, tipo: 'comida', fecha, categoria: selectedCat, alimento, kcal, proteina });
-  try {
-    await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
-    allEntries.push({ tipo: 'comida', fecha, categoria: selectedCat, alimento, kcal, proteina });
-    updateTodayView(); updateHistoryView();
-    showToast('✓ Guardado', 'ok');
-    document.getElementById('form-food').value = '';
-    document.getElementById('form-kcal').value = '';
-    document.getElementById('form-prot').value = '';
-    setTimeout(() => showView('today'), 600);
-  } catch (e) { showToast('Error al guardar', 'err'); }
-  finally { btn.disabled = false; btn.textContent = 'Guardar entrada'; }
+  
+  // Guardado optimista local inmediato
+  allEntries.push({ tipo: 'comida', fecha, categoria: selectedCat, alimento, kcal, proteina });
+  updateTodayView(); 
+  updateHistoryView();
+  
+  document.getElementById('form-food').value = '';
+  document.getElementById('form-kcal').value = '';
+  document.getElementById('form-prot').value = '';
+  showView('today');
+  
+  // Guardado en fondo silencioso
+  const saveIndicator = document.getElementById('save-ind');
+  if (saveIndicator) { saveIndicator.style.opacity = '1'; saveIndicator.textContent = 'Guardando comida...'; }
+  
+  fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' }).then(() => {
+    if (saveIndicator) {
+      saveIndicator.textContent = '✓ Guardado completado';
+      setTimeout(() => saveIndicator.style.opacity = '0', 2000);
+    }
+  }).catch(() => {
+    showToast('Aviso: Comprueba tu conexión', 'err');
+  });
+}
+
+function renderPresets() {
+  const grid = document.getElementById('presets-grid');
+  if (!grid) return;
+  if (!settings.presets || settings.presets.length === 0) {
+    grid.innerHTML = '<div style="grid-column: 1 / -1; font-size: 11px; color: var(--muted); text-align: center; padding: 20px;">No hay presets guardados. Crea uno usando el botón arriba.</div>';
+    return;
+  }
+  
+  grid.innerHTML = settings.presets.map((p, i) => `
+    <button class="preset-btn" onclick="applyAndSavePreset(${i})" oncontextmenu="deletePreset(${i}); return false;">
+      <div class="p-name">${p.n}</div>
+      <div class="p-stats">${p.k} kcal • ${p.p} g prot</div>
+    </button>
+  `).join('');
+}
+
+function applyAndSavePreset(idx) {
+  const p = settings.presets[idx];
+  document.getElementById('form-food').value = p.n;
+  document.getElementById('form-kcal').value = p.k;
+  document.getElementById('form-prot').value = p.p;
+  addEntry(); // Autoguardado e inyección en el día/categoría actual
+}
+
+function deletePreset(idx) {
+  if(confirm('¿Borrar este preset rápido?')) {
+    settings.presets.splice(idx, 1);
+    localStorage.setItem('macro_settings', JSON.stringify(settings));
+    fetch(API + '?' + new URLSearchParams({ action: 'save_settings', id_usuario: currentUser, tipo: 'ajuste', valor: JSON.stringify(settings) }), { method: 'GET', mode: 'no-cors' });
+    renderPresets();
+  }
+}
+
+function saveAsPreset() {
+  const n = document.getElementById('form-food').value.trim();
+  const k = parseFloat(document.getElementById('form-kcal').value) || 0;
+  const p = parseFloat(document.getElementById('form-prot').value) || 0;
+  if (!n) { showToast('Escribe un alimento primero', 'err'); return; }
+  
+  if (!settings.presets) settings.presets = [];
+  settings.presets.push({ n, k, p });
+  localStorage.setItem('macro_settings', JSON.stringify(settings));
+  
+  fetch(API + '?' + new URLSearchParams({ action: 'save_settings', id_usuario: currentUser, tipo: 'ajuste', valor: JSON.stringify(settings) }), { method: 'GET', mode: 'no-cors' });
+  
+  renderPresets();
+  showToast('✓ Preset añadido', 'ok');
 }
 
 // ── WORKOUT CAL ───────────────────────────
@@ -439,31 +502,26 @@ function changeMonth(delta) {
   renderWorkoutCal();
 }
 
-async function addPeso() {
+function addPeso() {
   const pInput = document.getElementById('form-peso');
   const peso = parseFloat(pInput.value);
   if (!peso) { showToast('Introduce un peso', 'err'); return; }
   
-  const btn = document.getElementById('btn-peso');
-  btn.disabled = true; btn.textContent = '...';
+  const today = todayStr();
+  const existingIdx = allEntries.findIndex(e => e.tipo === 'peso' && e.fecha === today);
+  if (existingIdx !== -1) {
+     allEntries[existingIdx].peso = peso;
+  } else {
+     allEntries.push({ tipo: 'peso', fecha: today, peso });
+  }
   
-  const p = new URLSearchParams({ action: 'add_peso', id_usuario: currentUser, tipo: 'peso', fecha: todayStr(), peso });
-  try {
-    await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
-    showToast('✓ Peso guardado', 'ok');
-    pInput.value = '';
-    
-    // Check if there is already a weight for today locally, replace it or push
-    const today = todayStr();
-    const existingIdx = allEntries.findIndex(e => e.tipo === 'peso' && e.fecha === today);
-    if(existingIdx !== -1) {
-       allEntries[existingIdx].peso = peso;
-    } else {
-       allEntries.push({ tipo: 'peso', fecha: today, peso });
-    }
-    renderPesoChart();
-  } catch (e) { showToast('Error', 'err'); }
-  finally { btn.disabled = false; btn.textContent = '+'; }
+  renderPesoChart();
+  pInput.value = '';
+  
+  const p = new URLSearchParams({ action: 'add_peso', id_usuario: currentUser, tipo: 'peso', fecha: today, peso });
+  fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' }).then(() => {
+     showToast('✓ Peso en la nube', 'ok');
+  });
 }
 
 async function toggleDay(day, isMini = false) {
@@ -560,11 +618,85 @@ function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
   document.getElementById('view-' + name).classList.add('active');
-  const idx = ['today', 'add', 'tracking', 'more'].indexOf(name);
+  const idx = ['today', 'add', 'tracking', 'ranking', 'more'].indexOf(name);
   const navBtns = document.querySelectorAll('nav button');
   if (navBtns[idx]) navBtns[idx].classList.add('active');
   if (name === 'tracking') renderWorkoutCal();
   if (name === 'more') updateHistoryView();
+  if (name === 'ranking') loadRanking();
+}
+
+// ── RANKING / MARCAS ───────────────────────
+async function saveMarcas() {
+  const pb = parseFloat(document.getElementById('form-pb').value) || 0;
+  const s = parseFloat(document.getElementById('form-s').value) || 0;
+  const cb = parseFloat(document.getElementById('form-cb').value) || 0;
+  
+  const btn = document.getElementById('btn-marcas');
+  btn.disabled = true; btn.textContent = 'Guardando...';
+  
+  const p = new URLSearchParams({ action: 'save_marca', id_usuario: currentUser, pb, s, cb });
+  try {
+    await fetch(API + '?' + p, { method: 'GET', mode: 'no-cors' });
+    showToast('✓ Marcas guardadas', 'ok');
+  } catch (e) { showToast('Error al guardar', 'err'); }
+  finally { btn.disabled = false; btn.textContent = 'Guardar/Actualizar Marcas'; }
+}
+
+async function loadRanking() {
+  const cont = document.getElementById('ranking-container');
+  cont.innerHTML = '<div class="loading"><span class="spinner"></span>Cargando ranking...</div>';
+  
+  try {
+    const res = await fetch(API + '?' + new URLSearchParams({ action: 'get_ranking', id_usuario: currentUser, t: Date.now() }));
+    const data = await res.json();
+    
+    if (!data || !data.length) {
+      cont.innerHTML = '<div class="empty"><div class="empty-icon">🏆</div>Nadie ha guardado marcas aún</div>';
+      return;
+    }
+    
+    const renderList = (sortedList, propFormat) => sortedList.map((u, i) => `
+      <div class="rank-card pos-${i+1}">
+        <div class="rank-pos">#${i+1}</div>
+        <div class="rank-info">
+          <div class="rank-name">${u.usuario}</div>
+          <div class="rank-stats">
+             ${propFormat(u)}
+          </div>
+        </div>
+      </div>
+    `).join('') || '<div class="empty" style="padding:10px; opacity:0.5;">Sin datos</div>';
+
+    const renderSec = (title, emoji, html) => `
+      <div class="sec-title" style="margin-top:24px; margin-bottom:8px;">${emoji} ${title}</div>
+      ${html}
+    `;
+
+    const htmlT = renderSec('Total (Suma PRs)', '🔥', renderList(
+      data.map(u => ({...u, total: (u.pb + u.s + u.cb)})).sort((a,b) => b.total - a.total),
+      u => `<div class="rank-stat" style="color:var(--accent);">Total: <span>${u.total} kg</span></div>`
+    ));
+    
+    const htmlB = renderSec('Press Banca', '💪', renderList(
+      [...data].sort((a,b) => b.pb - a.pb),
+      u => `<div class="rank-stat">Banca: <span>${u.pb} kg</span></div>`
+    ));
+
+    const htmlS = renderSec('Sentadilla', '🦵', renderList(
+      [...data].sort((a,b) => b.s - a.s),
+      u => `<div class="rank-stat">Sentadilla: <span>${u.s} kg</span></div>`
+    ));
+
+    const htmlC = renderSec('Curl Bíceps', '💪', renderList(
+      [...data].sort((a,b) => b.cb - a.cb),
+      u => `<div class="rank-stat">Bíceps: <span>${u.cb} kg</span></div>`
+    ));
+
+    cont.innerHTML = htmlT + htmlB + htmlS + htmlC;
+  } catch (e) {
+    cont.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div>Error al cargar ranking</div>';
+  }
 }
 
 // ── TOAST ─────────────────────────────────
